@@ -1,0 +1,157 @@
+name: "MFCC_Energy_combined_dnn"
+model_type: FEED_FORWARD_NET
+layer {
+  name: "MFCC_Energy_combined_input_layer"
+  dimensions: 5989
+  param {
+    name: "bias_generative"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm1_LAST"
+    pretrained_model_param_name: "bias"
+  }
+  is_input: true
+  loss_function: SQUARED_LOSS
+  hyperparams {
+    normalize: false
+    #dropout: true
+    activation: LINEAR
+  }
+  data_field {
+    train: "MFCC_Energy_combined_train"
+    validation: "MFCC_Energy_combined_validation"
+    test: "MFCC_Energy_combined_test"
+  }
+  performance_stats {
+    compute_error: true
+    compute_correct_preds: true
+  }
+}
+
+layer {
+  name: "MFCC_Energy_combined_hidden1"
+  dimensions: 2560
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm1_LAST"
+  }
+  param {
+    name: "bias_generative"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm2_LAST"
+    pretrained_model_param_name: "bias"
+  }
+}
+
+layer {
+  name: "MFCC_Energy_combined_hidden2"
+  dimensions: 1536
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm2_LAST"
+  }
+  param {
+    name: "bias_generative"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm3_LAST"
+    pretrained_model_param_name: "bias"
+  }
+}
+
+layer {
+  name: "MFCC_Energy_combined_hidden3"
+  dimensions: 1280
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm3_LAST"
+  }
+}
+
+layer { 
+  name: "output_layer"
+  #numlabels: 7
+  dimensions: 1
+  param {
+    name: "bias"
+    initialization: CONSTANT
+  }
+  hyperparams{
+    activation: LOGISTIC
+    apply_l2_decay: false
+  }
+  is_output: true
+  loss_function: CROSS_ENTROPY
+  data_field {
+    train: "label_train"
+    validation: "label_validation"
+    test: "label_test"
+  }
+  performance_stats {
+    #compute_MAP: true
+    compute_correct_preds: true
+    compute_cross_entropy: true
+  }
+}
+
+
+edge {
+  node1: "MFCC_Energy_combined_hidden2"
+  node2: "MFCC_Energy_combined_hidden3"
+  directed: true
+  param {
+    name: "weight"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm3_LAST"
+  }
+}
+
+edge {
+  node1: "MFCC_Energy_combined_hidden1"
+  node2: "MFCC_Energy_combined_hidden2"
+  directed: true
+  param {
+    name: "weight"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm2_LAST"
+  }
+}
+
+edge {
+  node1: "MFCC_Energy_combined_input_layer"
+  node2: "MFCC_Energy_combined_hidden1"
+  directed: true
+  param {
+    name: "weight"
+    initialization: PRETRAINED
+    pretrained_model: "MFCC_Energy_combined_rbm1_LAST"
+  }
+}
+
+edge {
+  node1: "MFCC_Energy_combined_hidden3"
+  node2: "output_layer"
+  directed: true
+  param {
+    name: "weight"
+    initialization: DENSE_GAUSSIAN
+    sigma: 0.1
+  }
+}
+
+
+hyperparams {
+  activation: LOGISTIC
+  base_epsilon: 0.01
+  epsilon_decay : INVERSE_T
+  epsilon_decay_half_life : 20000
+  initial_momentum : 0.5
+  final_momentum : 0.9
+  momentum_change_steps : 10000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  select_model_using_acc: true
+}
+
+prefix: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOSO_2_Multimodal_ITF/models/withMS"

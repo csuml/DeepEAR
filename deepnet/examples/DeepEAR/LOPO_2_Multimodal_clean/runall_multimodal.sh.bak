@@ -1,0 +1,139 @@
+#!/bin/bash
+deepnet=$AIRING_HOME/deepnet/deepnet
+
+prefix=/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_1_Multimodal
+
+# Amount of gpu memory to be used for buffering data. Adjust this for your GPU.
+# For a GPU with 6GB memory, this should be around 4GB.
+# If you get 'out of memory' errors, try decreasing this.
+gpu_mem=4G
+
+# Amount of main memory to be used for buffering data. Adjust this according to
+# your RAM. Having atleast 16G is ideal.
+main_mem=20G
+
+modality1=$1
+modality2=$2
+MS=$3
+trainer=${deepnet}/trainer.py
+extract_rep=${deepnet}/extract_rbm_representation.py
+model_output_dir=${prefix}/models/${MS}
+data_output_dir=${prefix}/reps/${MS}
+clobber=false
+
+mkdir -p ${model_output_dir}
+mkdir -p ${data_output_dir}
+
+model_prefix=${modality1}_${modality2}
+if [ ! -e models/${model_prefix} ]; then
+	model_prefix=${modality2}_${modality1}
+	if [ ! -e models/${model_prefix} ]; then
+	echo "model definition to combin ${modality1} and ${modality2} does not exist"
+	fi
+fi
+
+#ADDING  MODALITY TAG  
+#cp ${data_output_dir}/${modality1}_rbm2_LAST/data.pbtxt ${data_output_dir}/${modality1}_rbm2_LAST/data_withID.pbtxt
+#sed -i "s/\"hidden/\"${modality1}_hidden/" ${data_output_dir}/${modality1}_rbm2_LAST/data_withID.pbtxt
+
+#cp ${data_output_dir}/${modality2}_rbm2_LAST/data.pbtxt ${data_output_dir}/${modality2}_rbm2_LAST/data_withID.pbtxt
+#sed -i "s/\"hidden/\"${modality2}_hidden/" ${data_output_dir}/${modality2}_rbm2_LAST/data_withID.pbtxt
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_rbm1_LAST ]; then 
+	echo "Training ${model_prefix}_combined_rbm1"
+	if [ ! -e ${data_output_dir}/${model_prefix}_combined_rbm1_LAST/input_data.pbtxt ]; then 
+		echo "preparing input data"
+		python concatenateData.py ${prefix}/data_${MS}.pbtxt ${modality1} ${modality2} ${data_output_dir}/${model_prefix}_combined_rbm1_LAST/
+	fi  
+	python ${trainer} models/${model_prefix}/rbm1_${MS}.pbtxt trainers/${model_prefix}/train_rbm1_${MS}.pbtxt eval.pbtxt || exit 1
+	python ${extract_rep} ${model_output_dir}/${model_prefix}_combined_rbm1_LAST trainers/${model_prefix}/train_rbm1_${MS}.pbtxt ${model_prefix}_combined_hidden1 \
+	${data_output_dir}/${model_prefix}_combined_rbm1_LAST ${gpu_mem} ${main_mem} || exit 1
+fi
+
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_rbm2_LAST ]; then
+    echo "Training ${model_prefix}_combined_rbm2"
+    python ${trainer} models/${model_prefix}/rbm2.pbtxt trainers/${model_prefix}/train_rbm2_${MS}.pbtxt eval.pbtxt || exit 1
+    python ${extract_rep} ${model_output_dir}/${model_prefix}_combined_rbm2_LAST trainers/${model_prefix}/train_rbm2_${MS}.pbtxt ${model_prefix}_combined_hidden2 \
+${data_output_dir}/${model_prefix}_combined_rbm2_LAST ${gpu_mem} ${main_mem} || exit 1
+fi
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_rbm3_LAST ]; then
+    echo "Training ${model_prefix}_combined_rbm3"
+    python ${trainer} models/${model_prefix}/rbm3.pbtxt trainers/${model_prefix}/train_rbm3_${MS}.pbtxt eval.pbtxt || exit 1
+    python ${extract_rep} ${model_output_dir}/${model_prefix}_combined_rbm3_LAST trainers/${model_prefix}/train_rbm3_${MS}.pbtxt ${model_prefix}_combined_hidden3 \
+${data_output_dir}/${model_prefix}_combined_rbm3_LAST ${gpu_mem} ${main_mem} || exit 1
+fi
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_dnn_LAST ]; then
+    echo "Training ${model_prefix}_combined_dnn"
+    python merge_dataset_pb.py \
+            ${prefix}/data_${MS}.pbtxt \
+            ${data_output_dir}/${model_prefix}_combined_rbm1_LAST/input_data.pbtxt \
+            ${data_output_dir}/${model_prefix}_combined_rbm1_LAST/input_data.pbtxt || exit 1
+    python ${trainer} models/${model_prefix}/dnn_combined_${MS}.pbtxt trainers/${model_prefix}/train_dnn_combined_${MS}.pbtxt eval.pbtxt || exit 1
+fi
+
+# COMBINED HIDDEN CLASSIFIER
+for index in `seq 3`
+do 
+(
+	if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_hidden${index}_classifier_LAST ]; then
+    	echo "Training hidden${index} classifer ."
+    	python merge_dataset_pb.py \
+          	 ${data_output_dir}/${model_prefix}_combined_rbm${index}_LAST/data.pbtxt \
+           	 ${prefix}/data_${MS}.pbtxt \
+        	 ${data_output_dir}/${model_prefix}_combined_hidden${index}_classifier_LAST/input_data.pbtxt
+    	python ${trainer} models/${model_prefix}/hidden${index}_classifier.pbtxt trainers/${model_prefix}/train_hidden${index}_classifier_${MS}.pbtxt eval.pbtxt || exit 1
+	fi
+)
+done
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_input_classifier_LAST ]; then
+   echo "Training combined input classifer ."
+   python ${trainer} models/${model_prefix}/combined_input_classifier_${MS}.pbtxt trainers/${model_prefix}/train_input_classifier_${MS}.pbtxt eval.pbtxt || exit 1
+fi
+
+# JOINT RBM
+#(
+#if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_joint_rbm_LAST ]; then
+	echo "Training Joint  RBM layer ."
+#	python ${trainer} models/${model_prefix}/joint_rbm.pbtxt trainers/${model_prefix}/train_joint_${MS}.pbtxt eval.pbtxt || exit 1
+	python ${extract_rep} ${model_output_dir}/${model_prefix}_joint_rbm_LAST trainers/${model_prefix}/train_joint_CD_${MS}.pbtxt joint_hidden \
+${data_output_dir}/${model_prefix}_joint_rbm_LAST ${gpu_mem} ${main_mem} || exit 1
+	cp ${data_output_dir}/${model_prefix}_joint_rbm_LAST/data.pbtxt ${data_output_dir}/${model_prefix}_joint_rbm_LAST/data_withID.pbtxt
+	sed -i "s/"hidden/"${model_prefix}_hidden/" ${data_output_dir}/${model_prefix}_joint_rbm_LAST/data_withID.pbtxt
+#fi
+
+#train classfier directly 
+#if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_joint_hidden_classifier_LAST ]; then
+echo "train classfier only with representations from joint layer"
+python merge_dataset_pb.py \
+    ${prefix}/data_${MS}.pbtxt \
+    ${data_output_dir}/${model_prefix}_joint_rbm_LAST/data.pbtxt \
+    ${data_output_dir}/${model_prefix}_joint_classifer/data.pbtxt|| exit 1
+python ${trainer} models/${model_prefix}/joint_layer_classifier.pbtxt trainers/${model_prefix}/train_joint_classifier_${MS}.pbtxt eval.pbtxt
+#fi
+
+if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_combined_hidden3_classifier_LAST ]; then
+echo "train classfier only with combined representations from rbm3"
+python merge_dataset_pb.py \
+    ${prefix}/data_${MS}.pbtxt \
+    ${data_output_dir}/${model_prefix}_combined_hidden3_classifier/input_data.pbtxt \
+    ${data_output_dir}/${model_prefix}_combined_hidden3_classifier/data.pbtxt|| exit 1
+python ${trainer} models/${model_prefix}/combined_hidden3_classifier.pbtxt trainers/${model_prefix}/train_combined_hidden3_classifier_${MS}.pbtxt eval.pbtxt
+fi
+
+
+# TRAIN DNN
+#if ${clobber} || [ ! -e ${model_output_dir}/${model_prefix}_dnn_BEST ]; then
+echo "Training DNN."
+python ${trainer} models/${model_prefix}/dnn_${MS}.pbtxt trainers/${model_prefix}/train_dnn_${MS}.pbtxt eval.pbtxt || exit 1
+#fi
+
+#wait;
+# COLLECT RESULTS AND PUT INTO A LATEX TABLE.
+#if ${clobber} || [ ! -e results.tex ]; then
+python create_results_table.py ${prefix}/models results.tex || exit 1
+#fi
+

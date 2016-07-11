@@ -1,0 +1,68 @@
+name: "ZCR_rbm2"
+model_type: DBM
+hyperparams {
+  base_epsilon: 0.01
+  epsilon_decay : INVERSE_T
+  epsilon_decay_half_life : 10000
+  initial_momentum : 0.5
+  final_momentum : 0.9
+  momentum_change_steps : 10000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  activation: LOGISTIC
+  mf_steps: 1
+  gibbs_steps: 1
+  start_step_up_cd_after: 15000
+  step_up_cd_after: 5000
+}
+
+layer {
+  name: "ZCR_hidden1"
+  dimensions: 256
+  is_input: true
+  param {
+    name: "bias"
+    initialization: CONSTANT
+  }
+  loss_function: SQUARED_LOSS
+  data_field {
+    train: "ZCR_hidden1_train"
+    validation: "ZCR_hidden1_validation"
+    test: "ZCR_hidden1_test"
+  }
+  performance_stats {
+    compute_error: true
+  }
+  hyperparams {
+    apply_l2_decay: false
+    enable_display: false
+    #dropout: true
+  }
+}
+
+layer {
+  name: "ZCR_hidden2"
+  dimensions: 256
+  param {
+    name: "bias"
+    initialization: CONSTANT
+  }
+  hyperparams {
+    apply_l2_decay: false
+    enable_display: false
+  }
+}
+
+edge {
+  node1: "ZCR_hidden1"
+  node2: "ZCR_hidden2"
+  directed: false
+  up_factor: 2.0
+  down_factor: 2.0
+  param {
+    name: "weight"
+    initialization: DENSE_GAUSSIAN_SQRT_FAN_IN
+    sigma : 1.0
+  }
+}
+

@@ -1,68 +1,48 @@
 name: "mnist_conv"
 model_type: FEED_FORWARD_NET
-seed: 42
-hyperparams {
-  base_epsilon: 0.01
-  initial_momentum : 0.5
-  final_momentum : 0.9
-  momentum_change_steps : 10000
-  apply_l2_decay: true
-  l2_decay: 0.001
-  activation: RECTIFIED_LINEAR
-}
-
 layer {
   name: "input_layer"
-  dimensions: 784
+  dimensions: 3000
   is_input: true
-  shape: 28
-  shape: 28
-  shape: 1
-  hyperparams{
+  hyperparams {
     activation: LINEAR
   }
   data_field {
-    train: "train_data"
-    validation: "validation_data"
-    test: "test_data"
+    train: "framed_combined_train"
+    #validation: "validation_data"
+    test: "framed_combined_test"
   }
+  shape: 500
+  shape: 6
+  shape: 1
 }
-
 layer {
   name: "output_layer"
   dimensions: 1
-  numlabels: 10
+  numlabels: 12
   param {
     name: "bias"
     initialization: CONSTANT
-  }
-  hyperparams{
-    dropout: false
-    activation: SOFTMAX
   }
   is_output: true
   loss_function: CROSS_ENTROPY
+  hyperparams {
+    dropout: false
+    activation: SOFTMAX
+  }
   data_field {
-    train: "train_labels"
-    validation: "validation_labels"
-    test: "test_labels"
+    train: "framed_combined_label_train"
+    #validation: "validation_labels"
+    test: "framed_combined_label_test"
   }
   performance_stats {
-    compute_cross_entropy: true
     compute_correct_preds: true
+    compute_cross_entropy: true
   }
 }
-
 layer {
   name: "hidden1"
-  dimensions: 10816
-  # nloc = (x_width + 2*padding - size)/stride + 1
-  #  = (28 + 2* 2- 5)/1 + 1 = 28
-  # pooling:
-  # nloc = (nloc + 2*padding - size )/stride + 1
-  # = (28 + 2* 0 - 3)/2 + 1 = 13
-  # dims = num_filters * nloc**2
-  # dims = 64 * 13**2
+  dimensions: 832
   param {
     name: "bias"
     initialization: CONSTANT
@@ -71,18 +51,9 @@ layer {
     apply_l2_decay: false
   }
 }
-
 layer {
   name: "hidden2"
   dimensions: 2304
-  # nloc = (x_width + 2*padding - size)/stride + 1
-  #  = (13 + 2* 2- 5)/1 + 1 = 13
-  # pooling:
-  # nloc = (nloc + 2*padding - size )/stride + 1
-  # = (13 + 2* 0 - 3)/2 + 1 = 6
-  # dims = num_filters * nloc**2
-  # dims = 64 * 6**2
-
   param {
     name: "bias"
     initialization: CONSTANT
@@ -91,7 +62,6 @@ layer {
     apply_l2_decay: false
   }
 }
-
 layer {
   name: "hidden3"
   dimensions: 1024
@@ -100,15 +70,16 @@ layer {
     initialization: CONSTANT
   }
 }
-
 edge {
   node1: "input_layer"
   node2: "hidden1"
   param {
     name: "weight"
+    initialization: DENSE_GAUSSIAN
+    sigma: 0.01
     conv: true
     conv_params {
-      size: 5
+      size: 6
       stride: 1
       padding: 2
       num_filters: 64
@@ -117,17 +88,15 @@ edge {
       pool_size: 3
       pool_stride: 2
     }
-    initialization: DENSE_GAUSSIAN
-    sigma: 0.01
   }
   hyperparams {
     base_epsilon: 0.001
-    initial_momentum : 0.9
-    final_momentum : 0.9
-    momentum_change_steps : 20000
+    initial_momentum: 0.9
+    final_momentum: 0.9
+    momentum_change_steps: 20000
     apply_l2_decay: false
   }
-  receptive_field_width : 5
+  receptive_field_width: 5
   display_rows: 8
   display_cols: 8
 }
@@ -136,6 +105,8 @@ edge {
   node2: "hidden2"
   param {
     name: "weight"
+    initialization: DENSE_GAUSSIAN
+    sigma: 0.01
     conv: true
     conv_params {
       size: 5
@@ -147,18 +118,15 @@ edge {
       pool_size: 3
       pool_stride: 2
     }
-    initialization: DENSE_GAUSSIAN
-    sigma: 0.01
   }
   hyperparams {
     base_epsilon: 0.001
-    initial_momentum : 0.9
-    final_momentum : 0.9
-    momentum_change_steps : 20000
+    initial_momentum: 0.9
+    final_momentum: 0.9
+    momentum_change_steps: 20000
     apply_l2_decay: false
   }
 }
-
 edge {
   node1: "hidden2"
   node2: "hidden3"
@@ -168,7 +136,6 @@ edge {
     sigma: 1.0
   }
 }
-
 edge {
   node1: "hidden3"
   node2: "output_layer"
@@ -178,3 +145,13 @@ edge {
     sigma: 1.0
   }
 }
+hyperparams {
+  base_epsilon: 0.01
+  initial_momentum: 0.5
+  final_momentum: 0.9
+  momentum_change_steps: 10000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  activation: RECTIFIED_LINEAR
+}
+seed: 42

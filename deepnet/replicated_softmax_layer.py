@@ -61,7 +61,15 @@ class ReplicatedSoftmaxLayer(Layer):
 
   def ComputeDeriv(self):
     """Compute derivative w.r.t input given derivative w.r.t output."""
-    raise Exception('Back prop through replicated softmax not implemented.')
+    
+    self.state.div_by_row(self.NN)
+    self.deriv.mult(self.state)
+    self.deriv.sum(axis = 0, target = self.batchsize_temp)
+    self.batchsize_temp.mult(-1)   
+    self.state.mult_by_row(self.batchsize_temp, self.expanded_batch)
+    self.deriv.add(self.expanded_batch)
+    self.deriv.mult_by_row(self.NN)
+    self.state.mult_by_row(self.NN)
 
   def AllocateMemory(self, batchsize):
     super(ReplicatedSoftmaxLayer, self).AllocateMemory(batchsize)
@@ -126,8 +134,17 @@ class ReplicatedSoftmaxLayer(Layer):
       if self.hyperparams.normalize_error:
         self.data.sum(axis=0, target=temp)
         temp.add(self.tiny)
+        """
         self.data.div_by_row(temp, target=target)
         self.state.div_by_row(self.NN, target=self.expanded_batch)
+        target.subtract(self.expanded_batch)
+        """
+        
+        """
+        Modified by Ning Zhang
+        """
+        self.data.div_by_row(temp, target=self.expanded_batch)
+        self.state.div_by_row(self.NN, target=target)
         target.subtract(self.expanded_batch)
       else:
         self.data.sum(axis=0, target=temp)
@@ -152,3 +169,4 @@ class ReplicatedSoftmaxLayer(Layer):
     else:
       self.suff_stats.add_sums(self.state, axis=1, mult=-1.0)
     self.state.mult_by_row(self.NN)
+

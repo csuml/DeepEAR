@@ -23,11 +23,11 @@ def _lock_file(id):
     """lock file from integer id"""
     # /tmp is cleared on reboot on many systems, but it doesn't have to be
     if os.path.exists('/dev/shm'):
-        # /dev/shm on linux machines is a RAM disk, so is definitely cleared
+         #/dev/shm on linux machines is a RAM disk, so is definitely cleared
         return '/dev/shm/gpu_lock_%d' % id
     else:
-        return '/tmp/gpu_lock_%d' % id
-
+    	return '/tmp/gpu_lock_%id' % id
+    #return '/tmp/gpu_lock_1'	
 def owner_of_lock(id):
     """Username that has locked the device id. (Empty string if no lock)."""
     import pwd

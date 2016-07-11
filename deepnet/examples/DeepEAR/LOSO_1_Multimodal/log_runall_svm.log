@@ -1,0 +1,13 @@
+prepare MFCC_Energy libsvm file
+> /home/ningzhang/deepnet/deepnet/examples/audio_with_prof_chen_svmfeature/LOSO_1_Multimodal/svm_baseline.py(41)fromPb()
+-> for entry in datapb.data:
+(Pdb) (Pdb) (Pdb) (Pdb) *** SyntaxError: invalid syntax (<stdin>, line 1)
+(Pdb) *** SyntaxError: invalid syntax (<stdin>, line 1)
+(Pdb) Training input Energy svm.
+e model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x
+Training input Energy svm.
+elements: 802
+.................................................

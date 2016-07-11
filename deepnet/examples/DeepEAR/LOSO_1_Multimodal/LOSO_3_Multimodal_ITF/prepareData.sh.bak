@@ -1,0 +1,26 @@
+#!/bin/bash
+
+baseDir=/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_1_Multimodal
+MS=$1
+
+if [ ${MS}="withoutMS"  ]; then
+	echo "preparing features without MS"
+	withMS="false"
+else
+	echo "preparing features with MS"
+	withMS="true"
+fi
+
+if [ ! -e ${baseDir}/train/data_${MS}.pbtxt ]; then 
+	echo "Processing"
+    for folder in train validation test
+  	do
+	(
+		python features_parser.py $baseDir/${folder} ${withMS} "false"
+	)&
+  	done
+else
+	echo "Data exist already"
+fi
+
+

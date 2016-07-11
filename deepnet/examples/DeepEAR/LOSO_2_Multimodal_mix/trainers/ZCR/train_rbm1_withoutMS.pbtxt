@@ -1,0 +1,14 @@
+optimizer : CD
+stopcondition {
+  all_processed: false
+  steps: 50000
+}
+train: true 
+batchsize: 128
+data_proto: "data_withoutMS.pbtxt"
+eval_after: 5000
+checkpoint_after: 10000
+checkpoint_directory: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOSO_2_Multimodal_mix/models/withoutMS"
+data_proto_prefix: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOSO_2_Multimodal_mix"
+verbose: false
+randomize: true

@@ -1,0 +1,14 @@
+optimizer: GRADIENT_DESCENT
+stopcondition {
+  all_processed: false
+  steps: 50000
+}
+train: true 
+batchsize: 128
+data_proto: "ZCR_hidden1_classifier_LAST/input_data.pbtxt"
+eval_after: 500
+checkpoint_after: 10000
+checkpoint_directory: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_1_Multimodal/models/withMS"
+data_proto_prefix: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_1_Multimodal/reps/withMS"
+verbose: false
+randomize: true

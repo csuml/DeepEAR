@@ -1,13 +1,13 @@
-optimizer : CD
+optimizer: CD
 stopcondition {
   all_processed: false
   steps: 100000
 }
-train: true 
+train: true
 batchsize: 100
-data_proto: "/ais/gobi3/u/nitish/mnist/mnist.pbtxt"
+data_proto: "/data1/ningzhang/mnist/mnist.pbtxt"
 eval_after: 1000
 checkpoint_after: 100000
-checkpoint_directory: "/ais/gobi3/u/nitish/mnist/models"
-show_after: 1000
+checkpoint_directory: "/data1/ningzhang/deepnet_examples"
 randomize: true
+show_after: 1000

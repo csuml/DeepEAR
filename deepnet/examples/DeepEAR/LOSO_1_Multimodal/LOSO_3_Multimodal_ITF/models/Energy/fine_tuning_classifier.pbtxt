@@ -1,0 +1,104 @@
+name: "fine_tuning_classifer"
+model_type: FEED_FORWARD_NET
+hyperparams {
+  base_epsilon: 0.0001
+  epsilon_decay : INVERSE_T
+  epsilon_decay_half_life : 5000
+  initial_momentum : 0.5
+  final_momentum : 0.9
+  momentum_change_steps : 10000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  activation: LOGISTIC
+  mf_steps: 1
+  gibbs_steps: 1
+  start_step_up_cd_after: 15000
+  step_up_cd_after: 5000
+}
+
+layer {
+  name: "label_input"
+  dimensions: 4
+  is_output: true
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "fine_tuning_rbm_LAST"
+  }
+  loss_function: CROSS_ENTROPY
+  data_field {
+    train: "label_train"
+    validation: "label_validation"
+    test: "label_test"
+  }
+  hyperparams {
+    activation: LOGISTIC
+    apply_l2_decay: false
+    enable_display: false
+    #dropout: true
+  }
+  performance_stats {
+    compute_correct_preds: true
+    compute_cross_entropy: true
+  }
+}
+
+layer {
+  name: "Energy_hidden2"
+  dimensions: 1024
+  is_input: true
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "fine_tuning_rbm_LAST"
+  }
+  loss_function: SQUARED_LOSS
+  data_field {
+    train: "Energy_hidden2_train"
+    validation: "Energy_hidden2_validation"
+    test: "Energy_hidden2_test"
+  }
+  hyperparams {
+    apply_l2_decay: false
+    enable_display: false
+    dropout: true
+  }
+}
+
+layer {
+  name: "Energy_hidden3"
+  dimensions: 1024
+  param {
+    name: "bias"
+    initialization: PRETRAINED
+    pretrained_model: "fine_tuning_rbm_LAST"
+  }
+  hyperparams {
+    apply_l2_decay: false
+    enable_display: false
+  }
+}
+
+edge {
+  node1: "Energy_hidden2"
+  node2: "Energy_hidden3"
+  #up_factor: 1.0
+  #down_factor: 2.0
+  param {
+    name: "weight"
+    initialization: PRETRAINED
+    pretrained_model: "fine_tuning_rbm_LAST"
+  }
+}
+
+edge {
+  node1: "Energy_hidden3"
+  node2: "label_input"
+  param {
+    name: "weight"
+    initialization: PRETRAINED
+    pretrained_model: "fine_tuning_rbm_LAST"
+  }
+}
+
+prefix: "/data1/ningzhang/audio_eating_2/N21p/multi_4class_experiment/models/6class"

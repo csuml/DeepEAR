@@ -1,23 +1,10 @@
 name: "mnist_3layer_relu"
 model_type: FEED_FORWARD_NET
-seed: 42
-hyperparams {
-  base_epsilon: 0.01
-  epsilon_decay : EXPONENTIAL
-  epsilon_decay_half_life : 10000
-  initial_momentum : 0.9
-  final_momentum : 0.9
-  momentum_change_steps : 5000
-  apply_l2_decay: true
-  l2_decay: 0.001
-  activation: RECTIFIED_LINEAR
-}
-
 layer {
   name: "input_layer"
   dimensions: 784
   is_input: true
-  hyperparams{
+  hyperparams {
     activation: LOGISTIC
   }
   data_field {
@@ -26,7 +13,6 @@ layer {
     test: "test_data"
   }
 }
-
 layer {
   name: "output_layer"
   dimensions: 1
@@ -35,69 +21,64 @@ layer {
     name: "bias"
     initialization: CONSTANT
   }
-  hyperparams{
-    activation: SOFTMAX
-    apply_l2_decay: false
-  }
   is_output: true
   loss_function: CROSS_ENTROPY
+  hyperparams {
+    apply_l2_decay: false
+    activation: SOFTMAX
+  }
   data_field {
     train: "train_labels"
     validation: "validation_labels"
     test: "test_labels"
   }
   performance_stats {
-    compute_cross_entropy: true
     compute_correct_preds: true
+    compute_cross_entropy: true
   }
 }
-
 layer {
   name: "hidden1"
   dimensions: 1024
-  hyperparams{
-    apply_l2_decay: false
-  }
   param {
     name: "bias"
     initialization: CONSTANT
+  }
+  hyperparams {
+    apply_l2_decay: false
   }
   performance_stats {
     compute_sparsity: true
   }
 }
-
 layer {
   name: "hidden2"
   dimensions: 1024
-  hyperparams{
-    apply_l2_decay: false
-  }
   param {
     name: "bias"
     initialization: CONSTANT
+  }
+  hyperparams {
+    apply_l2_decay: false
   }
   performance_stats {
     compute_sparsity: true
   }
 }
-
 layer {
   name: "hidden3"
   dimensions: 2048
-  hyperparams{
-    apply_l2_decay: false
-  }
   param {
     name: "bias"
     initialization: CONSTANT
+  }
+  hyperparams {
+    apply_l2_decay: false
   }
   performance_stats {
     compute_sparsity: true
   }
 }
-
-
 edge {
   node1: "input_layer"
   node2: "hidden1"
@@ -107,7 +88,6 @@ edge {
     sigma: 1.0
   }
 }
-
 edge {
   node1: "hidden1"
   node2: "hidden2"
@@ -117,8 +97,6 @@ edge {
     sigma: 1.0
   }
 }
-
-
 edge {
   node1: "hidden2"
   node2: "hidden3"
@@ -128,7 +106,6 @@ edge {
     sigma: 1.0
   }
 }
-
 edge {
   node1: "hidden3"
   node2: "output_layer"
@@ -138,3 +115,15 @@ edge {
     sigma: 1.0
   }
 }
+hyperparams {
+  base_epsilon: 0.01
+  epsilon_decay: EXPONENTIAL
+  epsilon_decay_half_life: 10000
+  initial_momentum: 0.9
+  final_momentum: 0.9
+  momentum_change_steps: 5000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  activation: RECTIFIED_LINEAR
+}
+seed: 42

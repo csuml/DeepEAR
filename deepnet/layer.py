@@ -84,7 +84,10 @@ class Layer(Parameter):
         # Find the relevant node in the model.
         node = next(n for n in model.layer if n.name == node_name)
         # Find the relevant parameter in the node.
-        pretrained_param = next(p for p in node.param if p.name == param.name)
+        if param.pretrained_model_param_name is not u'':
+            pretrained_param = next(p for p in node.param if p.name == param.pretrained_model_param_name)
+        else:
+            pretrained_param = next(p for p in node.param if p.name == param.name)
         assert pretrained_param.mat != '',\
                 'Pretrained param %s in layer %s of model %s is empty!!' % (
                   pretrained_param.name, node.name, pretrained_model)
@@ -189,7 +192,9 @@ class Layer(Parameter):
         self.neg_sample = cm.CUDAMatrix(np.zeros((numdims, batchsize)))
         self.sample = self.pos_sample
         self.suff_stats = cm.empty((numdims, 1))
-      elif self.t_op.optimizer == deepnet_pb2.Operation.CD:
+      elif self.t_op.optimizer == deepnet_pb2.Operation.CD \
+        or self.t_op.optimizer == deepnet_pb2.Operation.UPDOWN \
+        or self.t_op.optimizer == deepnet_pb2.Operation.TP:
         self.sample = cm.CUDAMatrix(np.zeros((numdims, batchsize)))
         self.suff_stats = cm.empty((numdims, 1))
     else:
@@ -256,3 +261,4 @@ def display_w(w, s, r, c, fig, vmax=None, vmin=None, dataset='mnist', title='wei
   def GetSparsityDivisor(self):
     self.means_temp2.assign(1)
     return self.means_temp2
+

@@ -1,13 +1,13 @@
-optimizer : PCD
+optimizer: PCD
 stopcondition {
   all_processed: false
   steps: 600000
 }
-train: true 
+train: true
 batchsize: 100
-data_proto: "/ais/gobi3/u/nitish/mnist/mnist.pbtxt"
+data_proto: "/data1/ningzhang/mnist/mnist.pbtxt"
 eval_after: 500
 checkpoint_after: 100000
-checkpoint_directory: "/ais/gobi3/u/nitish/mnist/models"
-show_after: 500
+checkpoint_directory: "/data1/ningzhang/deepnet_examples"
 randomize: false
+show_after: 500

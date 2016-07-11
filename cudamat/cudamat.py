@@ -329,7 +329,7 @@ class CUDAMatrix(object):
         """Assign val to self, where val can be a scalar or a CUDAMatrix
         with the same dimensions as self. """
 
-        if isinstance(val, CUDAMatrix):
+        if isinstance(val, CUDAMatrix) or isinstance(val, TransposedCUDAMatrix):
             err_code = _cudamat.copy_on_device(val.p_mat, self.p_mat)
         elif isinstance(val, (int, float)):
             err_code = _cudamat.assign_scalar(self.p_mat, ct.c_float(val))
@@ -1140,7 +1140,7 @@ class CUDAMatrix(object):
         if not target:
             target = self
 
-        if isinstance(val, CUDAMatrix):
+        if isinstance(val, CUDAMatrix) or isinstance(val, TransposedCUDAMatrix):
             err_code = _cudamat.add_elementwise(self.p_mat, val.p_mat, target.p_mat)
         elif isinstance(val, (int, float)):
             err_code = _cudamat.add_scalar(self.p_mat, ct.c_float(val), target.p_mat)
@@ -1895,3 +1895,4 @@ def cublas_shutdown():
     _cudamat.cublas_shutdown()
 
 shutdown = cublas_shutdown
+

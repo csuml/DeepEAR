@@ -1,0 +1,15 @@
+#optimizer: CD
+optimizer: GRADIENT_DESCENT
+stopcondition {
+  all_processed: false
+  steps: 20000
+}
+train: true 
+batchsize: 128
+data_proto: "eating_v2.pbtxt"
+eval_after: 500
+checkpoint_after: 20000
+checkpoint_directory: "/data1/ningzhang/audio_eating_2/N21p/multi_4class_experiment/models/6class"
+data_proto_prefix: "/data1/ningzhang/audio_eating_2/N21p/multi_4class_experiment"
+verbose: false
+randomize: true

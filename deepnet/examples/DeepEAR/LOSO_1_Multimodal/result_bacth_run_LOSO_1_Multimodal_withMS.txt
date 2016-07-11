@@ -1,0 +1,1 @@
+MFCC_input_classifier_BEST train: 0.68082 valid: 0.68809 test: 0.61605 

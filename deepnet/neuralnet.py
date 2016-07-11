@@ -68,14 +68,15 @@ class NeuralNet(object):
   def DeepCopy(self):
     return CopyModel(self.net)
 
-  def LoadModelOnGPU(self, batchsize=-1):
+  def   LoadModelOnGPU(self, batchsize=-1):
     """Load the model on the GPU."""
     if batchsize < 0:
       if self.t_op:
         batchsize=self.t_op.batchsize
       else:
         batchsize=self.e_op.batchsize
-
+    #import pdb
+    #pdb.set_trace()
     for layer in self.net.layer:
       layer.hyperparams.MergeFrom(LoadMissing(layer.hyperparams,
                                               self.net.hyperparams))
@@ -85,7 +86,7 @@ class NeuralNet(object):
       if layer.tied:
         tied_to = next(l for l in self.layer if l.name == layer.tied_to)
       self.layer.append(CreateLayer(Layer, layer, self.t_op, tied_to=tied_to))
-
+    
     for edge in self.net.edge:
       hyp = deepnet_pb2.Hyperparams()
       hyp.CopyFrom(self.net.hyperparams)
@@ -153,8 +154,9 @@ class NeuralNet(object):
       layer.GetData()
     else:
       for i, edge in enumerate(layer.incoming_edge):
-        if edge in layer.outgoing_edge:
-          continue
+        if edge in layer.outgoing_edge and not (self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM):  
+	  continue
+        
         inputs = layer.incoming_neighbour[i].state
         if edge.conv or edge.local:
           if i == 0:
@@ -163,13 +165,22 @@ class NeuralNet(object):
             AddConvoleUp(inputs, edge, layer.state)
         else:
           w = edge.params['weight']
-          factor = edge.proto.up_factor
-          if i == 0:
-            cm.dot(w.T, inputs, target=layer.state)
-            if factor != 1:
-              layer.state.mult(factor)
+          if edge.node2 == layer:
+              factor = edge.proto.up_factor
+              if i == 0:
+                cm.dot(w.T, inputs, target=layer.state)
+                if factor != 1:
+                  layer.state.mult(factor)
+              else:
+                layer.state.add_dot(w.T, inputs, mult=factor)
           else:
-            layer.state.add_dot(w.T, inputs, mult=factor)
+              factor = edge.proto.down_factor
+              if i == 0:
+                cm.dot(w, inputs, target=layer.state)
+                if factor != 1:
+                  layer.state.mult(factor)
+              else:
+                layer.state.add_dot(w.T, inputs, mult=factor)      
       b = layer.params['bias']
       if layer.replicated_neighbour is None:
         layer.state.add_col_vec(b)
@@ -229,10 +240,99 @@ class NeuralNet(object):
         AccumulateConvDeriv(edge.node1, edge, layer.deriv)
       else:
         self.AccumulateDeriv(edge.node1, edge, layer.deriv)
+    #  edge.gradient.add_dot(edge.node1.state, layer.deriv.T, mult=1.0/edge.node1.batchsize)  
       self.UpdateEdgeParams(edge, layer.deriv, step)
     # Update the parameters on this layer (i.e., the bias).
     self.UpdateLayerParams(layer, step)
+    #cracking for contrastive BP, moved later
+    #self.ContrastiveUpdate(layer, step, True)
     return loss
+  def ContrastiveUpdate(self, layer,step, rough = False):
+    """
+    Contrastive BP
+    """
+    CD_factor = -0.5
+    if layer.is_input:
+      if rough:
+            return 
+      layer.deriv.assign(0)
+      if any([edge for edge in layer.outgoing_edge if edge.tied_to]):
+          edge = next(edge for edge in layer.outgoing_edge if edge.tied_to)
+          edge.tied_to.nod1.deriv.add_mult(layer.state, -edge.proto.up_factor)
+      self.UpdateLayerParams(layer, step)      
+    else:
+      state_list = []  
+      temp_state = cm.CUDAMatrix(layer.state.asarray())
+      for i, edge in enumerate(layer.incoming_edge):
+        if edge in layer.outgoing_edge:
+          continue
+        if edge.tied_to:
+            edge.gradient.assign(0)
+        if rough and edge.tied_to is None:
+            continue    
+        inputs = layer.incoming_neighbour[i].state
+        b = layer.params['bias']
+        if edge.conv or edge.local:
+            ConvolveUp(inputs, edge, layer.state)
+            if layer.replicated_neighbour is None:
+              layer.state.add_col_vec(b)
+            else:
+              layer.state.add_dot(b, layer.replicated_neighbour.NN)
+        else:
+          w = edge.params['weight']
+          factor = edge.proto.up_factor
+          cm.dot(w.T, inputs, target=layer.state)
+          if factor != 1:
+            layer.state.mult(factor)
+          if layer.replicated_neighbour is None:
+            layer.state.add_col_vec(b)
+          else:
+            layer.state.add_dot(b, layer.replicated_neighbour.NN)
+        layer.ApplyActivation()
+        if rough:
+          deriv_bak = cm.CUDAMatrix(layer.deriv.asarray())
+          """
+          instead of getloss between generated samples with label, we calculate the difference between propagated states 
+          """
+          #layer.data.assign(temp_state)
+          #loss = layer.GetLoss(get_deriv=True)
+	  #temp_state.subtract(layer.state,target = layer.deriv) 
+	  layer.state.subtract(temp_state,target = layer.deriv) 
+          layer.deriv.mult(CD_factor)
+	  edge.gradient.add_dot(edge.tied_to.node1.state, layer.deriv.T, mult=1.0/edge.node1.batchsize)
+	  #edge.gradient.add_dot(edge.node1.state, layer.deriv.T, mult=-1.0/edge.node1.batchsize)    
+          #layer.deriv.assign(deriv_bak)
+	  #layer.deriv.mult(CD_factor)
+          layer.deriv.add(deriv_bak)
+          #layer.deriv.mult(0.5)
+          deriv_bak.free_device_memory()
+        else:
+	  #import pdb
+	  #pdb.set_trace()   
+          temp_state_2 = cm.CUDAMatrix(layer.state.asarray())
+          layer.state.assign(temp_state)
+          state_list.append(temp_state_2)
+          edge.gradient.add_dot(inputs, temp_state_2.T, mult = CD_factor/edge.node1.batchsize)
+        # update
+        
+      for i, edge in enumerate(layer.incoming_edge):
+        if edge.tied_to:
+            if not rough:
+              temp_state.subtract(state_list[i])
+              layer.deriv.add_mult(temp_state, CD_factor)
+            edge.tied_to.gradient.add_mult(edge.gradient,-1.0)
+            #edge.tied_to.gradient.add_mult(edge.gradient)
+            #edge.tied_to.gradient.mult(0.5)
+            edge.gradient.assign(0)
+            edge = edge.tied_to
+        edge.num_grads_received += 1
+        if edge.num_grads_received == edge.num_shares:
+            edge.Update('weight', step)       
+    self.UpdateLayerParams(layer, step)  
+    temp_state.free_device_memory()
+    if not rough:
+      for state in state_list:
+          state.free_device_memory()
 
   def AccumulateDeriv(self, layer, edge, deriv):
     """Accumulate the derivative w.r.t the outputs of this layer.
@@ -248,9 +348,16 @@ class NeuralNet(object):
     if layer.is_input or edge.proto.block_gradient:
       return
     if layer.dirty:  # If some derivatives have already been received.
-      layer.deriv.add_dot(edge.params['weight'], deriv)
+      # cracking for this moment for contrastive back_prop
+      if edge.tied_to:
+        layer.deriv.add_dot(edge.params['weight'], -deriv * edge.proto.up_factor)
+      else:
+        layer.deriv.add_dot(edge.params['weight'], deriv)
     else:  # Receiving derivative for the first time.
-      cm.dot(edge.params['weight'], deriv, target=layer.deriv)
+      if edge.tied_to:
+        cm.dot(edge.params['weight'], -deriv * edge.up_factor, target=layer.deriv)  
+      else:
+        cm.dot(edge.params['weight'], deriv, target=layer.deriv)  
       layer.dirty = True
 
   def UpdateEdgeParams(self, edge, deriv, step):
@@ -268,7 +375,7 @@ class NeuralNet(object):
     else:
       edge.gradient.add_dot(edge.node1.state, deriv.T, mult=1.0/numcases)
     if edge.tied_to:
-      edge.tied_to.gradient.add(edge.gradient)
+      #edge.tied_to.gradient.add_mult(edge.gradient,-edge.proto.up_factor)
       edge.gradient.assign(0)
       edge = edge.tied_to
     edge.num_grads_received += 1
@@ -388,9 +495,20 @@ class NeuralNet(object):
         stats = losses
       step += 1
       stop = stopcondition(step)
+    #import pdb
+    #pdb.set_trace()
     if collect_predictions and stats:
       predictions = predictions[:collect_pos]
       targets = targets[:collect_pos]
+      if stats[0].compute_correct_preds:
+          """
+          compute the confusing matrix
+          """
+          confusingmatrix = np.zeros((predictions.shape[1],predictions.shape[1]))
+          real_preds = np.argmax(predictions, axis = 1)
+          real_targs = np.argmax(targets, axis = 1)
+          for i in range(real_targs.shape[0]):
+              confusingmatrix[real_targs[i],real_preds[i]] += 1
       MAP, prec50, MAP_list, prec50_list = self.ComputeScore(predictions, targets)
       stat = stats[0]
       stat.MAP = MAP
@@ -406,7 +524,7 @@ class NeuralNet(object):
 
   def ScoreOneLabel(self, preds, targets):
     """Computes Average precision and precision at 50."""
-    targets_sorted = targets[(-preds.T).argsort().flatten(),:]
+    targets_sorted = targets[(-preds.T).argsort().flatten()]
     cumsum = targets_sorted.cumsum()
     prec = cumsum / np.arange(1.0, 1 + targets.shape[0])
     total_pos = float(sum(targets))
@@ -512,7 +630,9 @@ class NeuralNet(object):
       data_list = handler.Get()
       if data_list[0].shape[1] != self.batchsize:
         self.ResetBatchsize(data_list[0].shape[1])
-      for i, layer in enumerate(self.datalayer):
+    #import pdb
+    #pdb.set_trace()  
+    for i, layer in enumerate(self.datalayer):
         layer.SetData(data_list[i])
     for layer in self.tied_datalayer:
       data = layer.data_tied_to.data
@@ -681,8 +801,13 @@ class NeuralNet(object):
       if self.SaveNow(step):
         self.t_op.current_step = step
         self.CopyModelToCPU()
-        util.WriteCheckpointFile(self.net, self.t_op)
-        if dump_best:
+        if self.net.model_type == deepnet_pb2.Model.DBN:
+            util.WriteCheckpointFile(self.rbm.net, self.t_op)
+            util.WriteCheckpointFile(self.upward_net.net, self.t_op)
+            util.WriteCheckpointFile(self.downward_net.net, self.t_op)
+        else:
+            util.WriteCheckpointFile(self.net, self.t_op)
+	if dump_best:
           dump_best = False
           if select_model_using_error:
             print 'Best valid error : %.4f Test error %.4f' % (best_valid_error, test_error)
@@ -694,3 +819,4 @@ class NeuralNet(object):
           util.WriteCheckpointFile(best_net, best_t_op, best=True)
 
       stop = self.TrainStopCondition(step)
+

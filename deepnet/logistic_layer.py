@@ -35,13 +35,13 @@ class LogisticLayer(Layer):
       data = self.data
       state = self.state
       temp1 = self.statesize
-
       cm.cross_entropy_bernoulli(data, state, target=temp1, tiny=self.tiny)
       perf.cross_entropy = temp1.sum()
-   
+      #import pdb
+      #pdb.set_trace()
       cm.correct_preds(data, state, target=temp1, cutoff=0.5)
-      perf.correct_preds = temp1.sum()
-
+      perf.correct_preds = temp1.sum()#/float(data.shape[0])
+      #perf.correct_preds = float(sum(np.argmax(data.asarray(), axis = 0) == np.argmax(state.asarray(), axis = 0)))
       if get_deriv:
         self.state.subtract(self.data, target=self.deriv)
 

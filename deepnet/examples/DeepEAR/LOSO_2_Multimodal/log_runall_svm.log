@@ -1,0 +1,161 @@
+prepare MFCC libsvm file
+prepare Energy libsvm file
+prepare MFCC_Energy libsvm file
+Training input MFCC svm.
+elements: 5187
+......................
+WARNING: using -h 0 may be faster
+*.
+WARNING: using -h 0 may be faster
+*
+optimization finished, #iter = 22354
+nu = 0.616712
+obj = -141549.985913, rho = -0.189942
+nSV = 40470, nBSV = 40463
+Total nSV = 40470
+free model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x
+Training input Energy svm.
+elements: 802
+..........................................................................*...........................*
+optimization finished, #iter = 101983
+nu = 0.226432
+obj = -39152.135577, rho = -0.593413
+nSV = 43820, nBSV = 6809
+Total nSV = 43820
+free model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x
+Training input MFCC_Energy combined svm.
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+elements: 5187
+elements: 5187
+Finishing reading data files
+ntv_1:10673, ntv_2 : 65617, len_tv_1 : 5187, len_tv_2 : 5187, nfa_1 : 55360851, nfa_2 : 340355379Finishing dot production of test data
+copy CPU memory to GPU memory
+copy CPU memory to GPU memory is finished
+doing GPU martix multiplication
+GPU martix multiplication is finished 
+Doing kernel calculation
+Kernel calculation finished
+Kernel calculation finished
+Starting the prediction, svm type: 0
+Accuracy = 66.6167% (7110/10673) (classification)
+free model_ptr_ptr
+free svm_problem
+free svm_problem
+Free prob.y
+Free prob.x
+Testing input MFCC svm with test set 
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+elements: 5187
+elements: 5187
+Finishing reading data files
+ntv_1:10673, ntv_2 : 65617, len_tv_1 : 5187, len_tv_2 : 5187, nfa_1 : 55360851, nfa_2 : 340355379Finishing dot production of test data
+copy CPU memory to GPU memory
+copy CPU memory to GPU memory is finished
+doing GPU martix multiplication
+GPU martix multiplication is finished 
+Doing kernel calculation
+Kernel calculation finished
+Kernel calculation finished
+Starting the prediction, svm type: 0
+Accuracy = 66.6167% (7110/10673) (classification)
+free model_ptr_ptr
+free svm_problem
+free svm_problem
+Free prob.y
+Free prob.x
+Testing input MFCC svm with test set 
+elements: 5187
+elements: 5187
+Finishing reading data files
+ntv_1:3869, ntv_2 : 65617, len_tv_1 : 5187, len_tv_2 : 5187, nfa_1 : 20068503, nfa_2 : 340355379Finishing dot production of test data
+copy CPU memory to GPU memory
+copy CPU memory to GPU memory is finished
+doing GPU martix multiplication
+GPU martix multiplication is finished 
+Doing kernel calculation
+Kernel calculation finished
+Kernel calculation finished
+Starting the prediction, svm type: 0
+Accuracy = 46.1101% (1784/3869) (classification)
+free model_ptr_ptr
+free svm_problem
+free svm_problem
+Free prob.y
+Free prob.x
+Testing input Energy svm with validation set 
+elements: 802
+elements: 802
+Finishing reading data files
+ntv_1:10673, ntv_2 : 65617, len_tv_1 : 802, len_tv_2 : 802, nfa_1 : 8559746, nfa_2 : 52624834Finishing dot production of test data
+copy CPU memory to GPU memory
+copy CPU memory to GPU memory is finished
+doing GPU martix multiplication
+GPU martix multiplication is finished 
+Doing kernel calculation
+Kernel calculation finished
+Kernel calculation finished
+Starting the prediction, svm type: 0
+Accuracy = 65.052% (6943/10673) (classification)
+free model_ptr_ptr
+free svm_problem
+free svm_problem
+Free prob.y
+Free prob.x
+Testing input Energy svm with test set 
+elements: 802
+elements: 802
+Finishing reading data files
+ntv_1:3869, ntv_2 : 65617, len_tv_1 : 802, len_tv_2 : 802, nfa_1 : 3102938, nfa_2 : 52624834Finishing dot production of test data
+copy CPU memory to GPU memory
+copy CPU memory to GPU memory is finished
+doing GPU martix multiplication
+GPU martix multiplication is finished 
+Doing kernel calculation
+Kernel calculation finished
+Kernel calculation finished
+Starting the prediction, svm type: 0
+Accuracy = 48.3846% (1872/3869) (classification)
+free model_ptr_ptr
+free svm_problem
+free svm_problem
+Free prob.y
+Free prob.x
+Testing input MFCC_Energy_combined svm with validation set 
+Testing input MFCC_Energy_combined svm with test set 
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+Testing input MFCC svm with test set 
+Testing input Energy svm with validation set 
+Testing input Energy svm with test set 
+Testing input MFCC_Energy_combined svm with validation set 
+Testing input MFCC_Energy_combined svm with test set 
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+Testing input MFCC svm with test set 
+Testing input Energy svm with validation set 
+Testing input Energy svm with test set 
+Testing input MFCC_Energy_combined svm with validation set 
+Testing input MFCC_Energy_combined svm with test set 
+prepare MFCC_Energy libsvm file
+Training input MFCC_Energy combined svm.
+Testing input MFCC svm with validation set 
+Testing input MFCC svm with test set 
+Testing input Energy svm with validation set 
+Testing input Energy svm with test set 
+Testing input MFCC_Energy_combined svm with validation set 
+Testing input MFCC_Energy_combined svm with test set 

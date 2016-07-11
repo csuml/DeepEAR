@@ -1,12 +1,15 @@
 """Implements a Deep Boltzmann Machine."""
 from neuralnet import *
+from cudamat.cudamat import sigmoid
 
 class DBM(NeuralNet):
 
   def __init__(self, *args, **kwargs):
     super(DBM, self).__init__(*args, **kwargs)
     self.initializer_net = None
-    self.cd = self.t_op.optimizer == deepnet_pb2.Operation.CD
+    self.cd = self.t_op.optimizer == deepnet_pb2.Operation.CD \
+        or self.t_op.optimizer == deepnet_pb2.Operation.UPDOWN \
+        or self.t_op.optimizer == deepnet_pb2.Operation.TP
 
   @staticmethod
   def AreInputs(l):
@@ -115,13 +118,20 @@ class DBM(NeuralNet):
         layer.state.mult(1.0 - layer.hyperparams.dropout_prob)
 
 
-  def PositivePhase(self, train=False, evaluate=False, step=0):
+  def PositivePhase(self, train=False, evaluate=False, step=0, dropInit=True):
     """Perform the positive phase.
 
     This method computes the sufficient statistics under the data distribution.
     """
 
     # Do a forward pass in the initializer net, if set.
+    if self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM:
+        ComputeUp = super(DBM,self).ComputeUp
+        pos_phase_order = self.temp_positive_order
+        
+    else:
+        ComputeUp = self.ComputeUp
+        pos_phase_order = self.pos_phase_order
     if self.initializer_net:
       self.initializer_net.ForwardPropagate(train=train, step=step)
 
@@ -129,31 +139,49 @@ class DBM(NeuralNet):
     for node in self.node_list:
       if node.is_input:
         # Load data into input nodes.
-        self.ComputeUp(node, train=train)
+        ComputeUp(node, train=train)
       elif node.is_initialized:
         node.state.assign(node.initialization_source.state)
-      else:
+      elif dropInit:
         # Initialize other nodes to zero.
         node.ResetState(rand=False)
-
+        
+    # this is optional    
+    if (self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM) and dropInit: 
+      node = pos_phase_order[len(pos_phase_order) - 1]
+      b = node.params['bias']
+      node.state.assign(0).add_col_vec(b)
+      node.ApplyActivation()
+      self.intermediate_state[node.name][0].assign(node.state)  
+       
     # Starting MF.
     for i in range(self.net.hyperparams.mf_steps):
-      for node in self.pos_phase_order:
-        self.ComputeUp(node, train=train, step=step, maxsteps=self.train_stop_steps)
+      if self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM: 
+        for node in pos_phase_order:
+            ComputeUp(node, train=train, step=step, maxsteps=self.train_stop_steps)
+            self.intermediate_state[node.name][i+1].assign(node.state)  
+      else:
+        for node in pos_phase_order:
+            ComputeUp(node, train=train, step=step, maxsteps=self.train_stop_steps)
+        
+        
     # End of MF.
 
     losses = []
     if train:
-      for node in self.layer:
-        r = node.CollectSufficientStatistics()
-        if r is not None:  # This is true only if sparsity is active.
-          perf = deepnet_pb2.Metrics()
-          perf.MergeFrom(node.proto.performance_stats)
-          perf.count = 1
-          perf.sparsity = r
-          losses.append(perf)
-      for edge in self.edge:
-        edge.CollectSufficientStatistics()
+      if self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM:
+          return
+      else: 
+          for node in self.layer:
+            r = node.CollectSufficientStatistics()
+            if r is not None:  # This is true only if sparsity is active.
+              perf = deepnet_pb2.Metrics()
+              perf.MergeFrom(node.proto.performance_stats)
+              perf.count = 1
+              perf.sparsity = r
+              losses.append(perf)
+          for edge in self.edge:
+            edge.CollectSufficientStatistics()
 
     # Evaluation
     # If CD, then this step would be performed by the negative phase anyways,
@@ -264,15 +292,183 @@ class DBM(NeuralNet):
     super(DBM, self).GetBatch(handler=handler)
     if self.initializer_net:
       self.initializer_net.GetBatch()
-
-  def TrainOneBatch(self, step):
-    losses1 = self.PositivePhase(train=True, step=step)
-    if step == 0 and self.t_op.optimizer == deepnet_pb2.Operation.PCD:
-      self.InitializeNegPhase(to_pos=True)
-    losses2 = self.NegativePhase(step, train=True)
-    losses1.extend(losses2)
-    return losses1
   
+  def VIUpdateEdgeParams(self, edge, deriv, step, transpose = False, accum = True):
+    """ Update the parameters associated with this edge.
+
+    Update the weights and associated parameters.
+    Args:
+      deriv: Gradient w.r.t the inputs at the outgoing end.
+      step: Training step.
+    """
+    numcases = edge.node1.batchsize
+    if edge.conv or edge.local:
+      ConvOuter(edge, edge.temp)
+      edge.gradient.add_mult(edge.temp, mult=1.0/numcases)
+    else:
+      if transpose:
+          if accum:
+              edge.gradient.add_dot(deriv, edge.node2.state.T, mult=1.0/numcases)
+          else:
+              cm.dot(deriv, edge.node2.state.T, mult=1.0/numcases, target=edge.gradient)
+      else:
+          if accum:
+              edge.gradient.add_dot(edge.node1.state, deriv.T, mult=1.0/numcases)
+          else:
+              cm.dot(edge.node1.state, deriv.T, mult=1.0/numcases, target=edge.gradient)
+              
+  def TrainOneBatch(self, step):
+    """
+    Modified by Ning Zhang, adding the MPT and VI training
+    """
+    if self.t_op.optimizer == deepnet_pb2.Operation.PCD or self.t_op.optimizer == deepnet_pb2.Operation.CD \
+        or self.t_op.optimizer == deepnet_pb2.Operation.UPDOWN \
+        or self.t_op.optimizer == deepnet_pb2.Operation.TP:
+        losses1 = self.PositivePhase(train=True, step=step)
+        if step == 0 and self.t_op.optimizer == deepnet_pb2.Operation.PCD:
+          self.InitializeNegPhase(to_pos=True)
+        losses2 = self.NegativePhase(step, train=True)
+        losses1.extend(losses2)
+        return losses1
+    if self.t_op.optimizer == deepnet_pb2.Operation.VI or self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM:
+        assert(len(self.input_datalayer) > 1)
+        if not hasattr(self, 'intermediate_state'):
+            self.intermediate_state = {}
+            for node in self.node_list:
+                temp = []
+                for i in range(self.net.hyperparams.mf_steps + 1):
+                    temp.append(cm.CUDAMatrix(np.zeros(node.state.shape)))
+                self.intermediate_state[node.name] = temp
+        losses1 = []     
+        accum = True
+        if self.t_op.optimizer == deepnet_pb2.Operation.VI:
+            accum = False
+        if not hasattr(self, 'deriv_accum'):
+            self.deriv_accum = {}
+            for node in self.layer:
+                self.deriv_accum[node.name] = cm.CUDAMatrix(np.zeros(node.deriv.shape)) 
+        for node in self.input_datalayer: 
+            node.is_input = False
+            self.temp_positive_order = []
+            self.temp_positive_order.extend(self.pos_phase_order)
+            self.temp_positive_order.append(node)
+            self.PositivePhase(train=True, step=step)
+            """
+            Back-propagtion for VI
+            You can optionally give good initial states for dropped modality with sigmoid(bias).
+            Note that this is not included in original Michigan's paper, but included in MPT.
+            Also, the order of inference should be explored, either the feedforward style all through (VI)
+            or even-odd style for first MF step (MPT)
+            """
+            
+            temp_reversed_postive_order = list(reversed(self.temp_positive_order))
+            for i in range(self.net.hyperparams.mf_steps):
+                if i == 0:
+                    node.is_output = True
+                    losses1.extend(self.BackwardPropagate(step, temp_reversed_postive_order, i, accum))
+                    node.is_output = False
+                else:
+                    self.BackwardPropagate(step, temp_reversed_postive_order, i, accum)
+            node.is_input = True
+        for node in self.layer:
+            for edge in node.incoming_edge:
+                if edge.node2 is node:
+                    edge.Update('weight', step)
+            
+            #node.deriv.assign(self.deriv_accum[node.name])
+            self.deriv_accum[node.name].assign(0)
+            super(DBM, self).UpdateLayerParams(node, step)
+                
+        return losses1
+        
+  def BackwardPropagate(self, step, reversed_postive_order, mf_step_index, accum = True):
+    """Backprop through the network.
+    This is used for VI training and MPT training 
+    Args:
+      step: Training step.
+    """
+    losses = []
+    for node in reversed_postive_order:
+      loss = self.ComputeDown(node, step, mf_step_index, accum)
+      if loss:
+        losses.append(loss)
+    return losses  
+
+  def ComputeDown(self, layer, step, mf_step_index, accum = True):
+    """Backpropagate through this layer.
+    This function differs with the one in Nerualnet in that it does not 
+    update parameters instantly. 
+    Args:
+      step: The training step. Needed because some hyperparameters depend on
+      which training step they are being used in.
+      mf_step_index: indicate which mf_step state will be used 
+      accum: indicated whether to used the propagation method proposed by Ning Zhang
+    """
+    if layer.is_input:  # Nobody to backprop to.
+      return
+    # At this point layer.deriv contains the derivative with respect to the
+    # outputs of this layer. Compute derivative with respect to the inputs.
+    if layer.is_output:
+      loss = layer.GetLoss(get_deriv=True)
+      self.deriv_accum[layer.name].add(layer.deriv)
+    else:
+      loss = None
+      if layer.hyperparams.sparsity:
+        sparsity_gradient = layer.GetSparsityGradient()
+        layer.deriv.add_col_vec(sparsity_gradient)
+      # the index is correct because intermediate_state contains mf_steps + 1 items
+      #layer.state.assign(self.intermediate_state[layer.name][self.net.hyperparams.mf_steps - mf_step_index])
+      layer.ComputeDeriv()
+      self.deriv_accum[layer.name].add(layer.deriv)
+    # Now layer.deriv contains the derivative w.r.t to the inputs.
+    # Send it down each incoming edge and update parameters on the edge.
+    for edge in layer.incoming_edge:
+      if edge.node1 is not layer:
+        node1 = edge.node1    
+        transpose = False 
+        #hacking, fix it later!!! Here we assume edge.node1 is bottom layer and node2 is top layer,
+        #and model only have one hidden (joint hidden) layer 
+        if not edge.node1.is_input:
+            edge.node2.state.assign(self.intermediate_state[layer.name][self.net.hyperparams.mf_steps - mf_step_index - 1])
+            node1.state.assign(self.intermediate_state[node1.name][self.net.hyperparams.mf_steps - mf_step_index-1])
+      else:
+        node1 = edge.node2 
+        transpose = True
+        
+      if not accum:
+          node1.dirty = False      
+      if edge.conv or edge.local:
+        AccumulateConvDeriv(node1, edge, layer.deriv)
+      else:
+        self.AccumulateDeriv(node1, edge, layer.deriv)
+      self.VIUpdateEdgeParams(edge, layer.deriv, step, transpose, False)  
+    return loss
+
+  def AccumulateDeriv(self, layer, edge, deriv):
+    """Accumulate the derivative w.r.t the outputs of this layer.
+
+    A layer needs to compute derivatives w.r.t its outputs. These outputs may
+    have been connected to lots of other nodes through outgoing edges.
+    This method adds up the derivatives contributed by each outgoing edge.
+    It gets derivatives w.r.t the inputs at the other end of its outgoing edge.
+    Args:
+      edge: The edge which is sending the derivative.
+      deriv: The derivative w.r.t the inputs at the other end of this edge.
+    """
+    if layer.is_input or edge.proto.block_gradient:
+      return
+    if layer.dirty:  # If some derivatives have already been received.
+        if layer is edge.node1:
+            layer.deriv.add_dot(edge.params['weight'], deriv)
+        else:
+            layer.deriv.add_dot(edge.params['weight'].T, deriv)    
+    else:  # Receiving derivative for the first time.
+        if layer is edge.node1:
+            cm.dot(edge.params['weight'], deriv, target=layer.deriv)  
+        else:
+            cm.dot(edge.params['weight'].T, deriv, target=layer.deriv)  
+    layer.dirty = True
+      
   def EvaluateOneBatch(self):
     losses = self.PositivePhase(train=False, evaluate=True)
     return losses
@@ -362,8 +558,8 @@ class DBM(NeuralNet):
             node.state.asarray().T
     return dict(zip(names, rep_list))
 
-  def WriteRepresentationToDisk(self, layernames, output_dir, memory='1G',
-                                dataset='test', input_recon=False):
+  def WriteRepresentationToDisk(self, layernames, output_dir, memory='4G',
+                                dataset='validation', input_recon=False, sampling = False, gibbs_steps = 1):
     layers = [self.GetLayerByName(lname) for lname in layernames]
     numdim_list = [layer.state.shape[0] for layer in layers]
     if dataset == 'train':
@@ -384,15 +580,43 @@ class DBM(NeuralNet):
         return
       numbatches = self.test_data_handler.num_batches
       size = numbatches * self.test_data_handler.batchsize
-    datawriter = DataWriter(layernames, output_dir, memory, numdim_list, size)
-
+    if sampling:
+        layernames_gibbs = []
+        numdim_list = []
+        for i in xrange(gibbs_steps):
+            for layer in layers: 
+                layernames_gibbs.append(layer.name + "_" + str(i+1))
+                numdim_list.append(layer.state.shape[0])
+        phrase_order = [node for node in self.layer if not node.is_input]
+        datawriter = DataWriter(layernames_gibbs, output_dir, memory, numdim_list, size)
+        for node in self.layer:
+            if node.is_input:
+                phrase_order.append(node)
+    else: 
+        datawriter = DataWriter(layernames, output_dir, memory, numdim_list, size)  
+              
     for batch in range(numbatches):
       datagetter()
-      sys.stdout.write('\r%d' % (batch+1))
-      sys.stdout.flush()
-      self.PositivePhase(train=False, evaluate=input_recon)
-      reprs = [l.state.asarray().T for l in layers]
-      datawriter.Submit(reprs)
+      if not sampling:
+          sys.stdout.write('\r%d' % (batch+1))
+          sys.stdout.flush()
+          self.PositivePhase(train=False, evaluate=input_recon)
+          reprs = [l.state.asarray().T for l in layers]
+          datawriter.Submit(reprs)
+      else:      
+          bufferlist = []
+          for node in self.layer:
+              if node.is_input:
+                  node.GetData()
+                  node.sample.assign(node.state)
+          for i in xrange(gibbs_steps):
+            for j, node in enumerate(phrase_order):
+              self.ComputeUp(node, use_samples=True, compute_input=True)
+              node.Sample()
+              #split samples for convenience
+            bufferlist.extend([np.copy(l.state.asarray().T) for l in layers])
+
+          datawriter.Submit(bufferlist)
     sys.stdout.write('\n')
     size = datawriter.Commit()
     return size
@@ -513,3 +737,4 @@ class DBM(NeuralNet):
         print 'Unclamping %s' % layername
         l.is_input = False
         self.unclamped_layer.append(l.name)
+

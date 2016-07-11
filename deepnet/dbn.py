@@ -1,22 +1,30 @@
 """Implements a Deep Belief Network."""
 from dbm import *
+from tarfile import TUREAD
 
 class DBN(DBM):
 
   def __init__(self, net, t_op=None, e_op=None):
     rbm, upward_net, downward_net, junction_layers = DBN.SplitDBN(net)
-    self.rbm = DBM(rbm, t_op, e_op)
+    #this help to separate top rbm with whole model 
+    r_t_op = CopyOperation(t_op)
+    self.rbm = DBM(rbm, r_t_op, e_op)
     self.upward_net = NeuralNet(upward_net, t_op, e_op)
     self.downward_net = NeuralNet(downward_net, t_op, e_op)
     self.junction_layers = junction_layers
-    self.net = self.rbm.net
-    self.t_op = self.rbm.t_op
-    self.e_op = self.rbm.e_op
+    # add all_layers for future use
+    self.all_layers = net.layer
+    self.net = net
+    self.t_op = t_op
+    self.e_op = e_op
     self.verbose = self.rbm.verbose
     self.batchsize = self.t_op.batchsize
-
+    
+    
   def CopyModelToCPU(self):
     self.rbm.CopyModelToCPU()
+    self.upward_net.CopyModelToCPU()
+    self.downward_net.CopyModelToCPU()
 
   def DeepCopy(self):
     return CopyModel(self.rbm.net)
@@ -43,7 +51,7 @@ class DBN(DBM):
 
   @staticmethod
   def SplitDBN(net):
-    #net = ReadModel(dbn_file)
+    # net = ReadModel(dbn_file)
     rbm = deepnet_pb2.Model()
     rbm.CopyFrom(net)
     rbm.name = '%s_rbm' % net.name
@@ -88,7 +96,7 @@ class DBN(DBM):
           else:
             layer.param.extend([p])
 
-    # CONSTRUCT DOWNNARD NET.
+    # CONSTRUCT DOWNWARD NET.
     down_net = deepnet_pb2.Model()
     down_net.CopyFrom(net)
     down_net.name = '%s_downward_net' % net.name
@@ -200,13 +208,23 @@ class DBN(DBM):
       layer.SetData(layer.tied_to.data)
 
   def TrainOneBatch(self, step):
-    self.upward_net.ForwardPropagate(train=True, step=step)
-    return self.rbm.TrainOneBatch(step)
+    if self.t_op.optimizer == deepnet_pb2.Operation.UPDOWN:
+        return self.UpDownFineTuning(step=step, gibbs=False)
+    elif self.t_op.optimizer == deepnet_pb2.Operation.TP:
+        return self.TargetPropFineTuning(step=step)
+    elif self.t_op.optimizer == deepnet_pb2.Operation.VI:
+        #return self.MinVIFineTuning(step=step)
+        return self.MinVIFineTuning_v2(step=step, forceWeightsTied=False)
+    elif self.t_op.optimizer == deepnet_pb2.Operation.VI_ACCUM:
+        return self.MinVIFineTuning_v2(step=step, forceWeightsTied=False)
+    else:
+        self.upward_net.ForwardPropagate(train=True, step=step)
+        return self.rbm.TrainOneBatch(step)
  
   def PositivePhase(self, train=False, evaluate=False, step=0):
     self.upward_net.ForwardPropagate(train=train, step=step)
     return self.rbm.PositivePhase(train=train, evaluate=evaluate, step=step)
-    #self.downward_net.ForwardPropagate(train=train, step=step)
+    # self.downward_net.ForwardPropagate(train=train, step=step)
 
   def NegativePhase(self, *args, **kwargs):
     return self.rbm.NegativePhase(*args, **kwargs)
@@ -249,7 +267,7 @@ class DBN(DBM):
     mf = method == 'mf'
 
     for batch in range(numbatches):
-      sys.stdout.write('\r%d' % (batch+1))
+      sys.stdout.write('\r%d' % (batch + 1))
       sys.stdout.flush()
       datagetter()
       for l in upward_net_unclamped_inputs:
@@ -257,6 +275,7 @@ class DBN(DBM):
       self.upward_net.ForwardPropagate()
       for node in self.rbm.node_list:
         if node.is_input or node.is_initialized:
+        # Here, it has been announced during the setupData phrase that later.data = upward_net.state
           node.GetData()
           if gibbs:
             node.sample.assign(node.state)
@@ -282,3 +301,178 @@ class DBN(DBM):
       else:
         layer = self.upward_net.GetLayerByName(layername)
     return layer
+   
+  def GetSampleFromLayers(self, layernames, mc_steps, sampleNum, output_dir, all=False, memory='1G', dataset='validation', method='gibbs'):
+    layers_to_sample = []
+    back_prop_layers = []
+    
+    temp_pos_phase_order = []
+    temp_pos_phase_order.append(self.rbm.pos_phase_order[0])     
+    # force add the input layers into the phase_order for sampling                             
+    for node in self.rbm.input_datalayer:
+        temp_pos_phase_order.append(node) 
+    for l in self.upward_net.layer:
+        if l.is_input: 
+          back_prop_layers.append(l.name) 
+    
+    input_layers = [self.GetLayerByName(l, down=True) for l in back_prop_layers]               
+                
+    if all:
+      layers_to_sample = [self.GetLayerByName(l, down=True) for l in self.net.layer]
+    else:
+      layers_to_sample = [self.GetLayerByName(l, down=True) for l in layernames]               
+      
+      
+    numdim_list = [layer.state.shape[0] for layer in layers_to_sample]
+    numdim_list_projection = [layer.state.shape[0] for layer in input_layers]
+    
+    if dataset == 'train':
+      datagetter = self.GetTrainBatch
+      if self.train_data_handler is None:
+        return
+      batchsize = self.train_data_handler.batchsize
+      size = sampleNum * self.train_data_handler.batchsize
+    elif dataset == 'validation':
+      datagetter = self.GetValidationBatch
+      if self.validation_data_handler is None:
+        return
+      batchsize = self.validation_data_handler.batchsize
+      size = sampleNum * self.validation_data_handler.batchsize
+    elif dataset == 'test':
+      datagetter = self.GetTestBatch
+      if self.test_data_handler is None:
+        return
+      batchsize = self.test_data_handler.batchsize
+      size = sampleNum * self.test_data_handler.batchsize
+    dw = DataWriter(layernames, output_dir, memory, numdim_list, size)
+    
+    joint_project = []
+    for ln in back_prop_layers:
+      joint_project.append(ln + '_joint')
+      
+    dw_back_propped_joint = DataWriter(joint_project, output_dir, memory, numdim_list_projection, size)  
+    dw_back_propped = DataWriter(back_prop_layers, output_dir, memory, numdim_list_projection, size)
+    
+    gibbs = method == 'gibbs'
+    datagetter()
+      # forwardPropagate assign a good initial states for layers 
+    self.upward_net.ForwardPropagate()
+    for node in self.rbm.node_list:
+        if node.is_input or node.is_initialized:
+        # Here, it has been announced during the setupData phrase that later.data = upward_net.state
+          node.GetData()
+          if gibbs:
+            node.sample.assign(node.state)
+        else:
+          node.ResetState(rand=False)
+    # here, we are supposed to use samples not the probability when we do the sampling 
+        
+    for i in range(mc_steps):
+        for node in temp_pos_phase_order:
+          self.ComputeUp(node, use_samples=gibbs, compute_input=True)
+          if gibbs:
+            node.Sample()
+            
+    # suppose after mc_steps the Markov Chain has reach the equilibrium state  
+    inter_space = [0, 1, 5, 10, 20, 50, 100, 200, 500]; 
+    interpolation_neigbors = [];
+    interpolation_neigbors_joint = [];     
+    for i in range(sampleNum):
+        for node in temp_pos_phase_order:
+          self.ComputeUp(node, use_samples=gibbs, compute_input=True)
+          if gibbs:
+            node.Sample()
+        # samples generated from wanted layers    
+        output = [l.sample.asarray().T for l in layers_to_sample] 
+        dw.Submit(output)    
+        if i in inter_space:
+            interpolation_neigbors.append(np.copy(output[0].T))
+            interpolation_neigbors.append(np.copy(output[1].T))
+            interpolation_neigbors_joint.append(np.copy(output[2].T)) 
+            
+        # these are the samples back-propped from top joint layer
+        for node in temp_pos_phase_order:
+          if node in self.rbm.pos_phase_order:
+              continue
+          # one step more for projection because downward_net do not contains the top layer of rbm, here I choose to use state rather than sample
+          self.ComputeUp(node, use_samples=True, compute_input=True)
+        
+        self.downward_net.ForwardPropagate()
+        projected_samples_joint = [l.state.asarray().T for l in input_layers]
+        dw_back_propped_joint.Submit(projected_samples_joint)
+        
+        # these are the samples back-propped from the junction layers  
+        for node in temp_pos_phase_order:
+          if node in self.rbm.pos_phase_order:
+              continue  
+          node.state.assign(node.sample)
+           
+        self.downward_net.ForwardPropagate()
+        projected_samples = [l.state.asarray().T for l in input_layers]     
+              
+        dw_back_propped.Submit(projected_samples)
+       
+    # project the interpolation to 
+    self.Interpolation(interpolation_neigbors_joint, interpolation_neigbors, temp_pos_phase_order, output_dir, batchsize, numdim_list_projection, input_layers)
+    
+    
+     
+    sys.stdout.write('\n')
+    size = dw.Commit()
+    dw_back_propped_joint.Commit()
+    dw_back_propped.Commit()
+    
+    return size[0]
+   
+  def Interpolation(self, interpolation_neigbors_joint, interpolation_neigbors, temp_pos_phase_order, output_dir, batchsize, numdim_list_projection, input_layers):
+        num = len(interpolation_neigbors_joint);
+        name = ['interpolation_text', 'interpolation_image']
+        name_joint = ['interpolation_text_joint', 'interpolation_image_joint']
+        dw = DataWriter(name, output_dir, '20G', numdim_list_projection, (num - 1) * batchsize) 
+        dw_joint = DataWriter(name_joint, output_dir, '20G', numdim_list_projection, (num - 1) * batchsize) 
+        for i in range(num - 1):
+            sample_joint = (interpolation_neigbors_joint[0] + interpolation_neigbors_joint[i + 1]) / 2
+            sample_image = (interpolation_neigbors[0] + interpolation_neigbors[2 * i + 2]) / 2
+            sample_text = (interpolation_neigbors[1] + interpolation_neigbors[2 * i + 3]) / 2
+            sample_mat_joint = cm.CUDAMatrix(sample_joint)
+            sample_mat_image = cm.CUDAMatrix(sample_image)
+            sample_mat_text = cm.CUDAMatrix(sample_text)
+            self.rbm.pos_phase_order[0].sample.assign(sample_mat_joint)
+            for node in temp_pos_phase_order:
+              if node in self.rbm.pos_phase_order:
+                  continue
+              # one step more for projection because downward_net do not contains the top layer of rbm, here I choose to use state rather than sample
+              self.ComputeUp(node, use_samples=True, compute_input=True)
+            
+            self.downward_net.ForwardPropagate()
+            projected_samples_joint = [l.state.asarray().T for l in input_layers]
+            dw_joint.Submit(projected_samples_joint)
+            
+            for node in temp_pos_phase_order:
+                if node.name == 'image_hidden2' :
+                    node.state.assign(sample_mat_image)
+                if node.name == 'text_hidden2' :
+                    node.state.assign(sample_mat_text)    
+                    
+            
+            self.downward_net.ForwardPropagate()
+            projected_samples = [l.state.asarray().T for l in input_layers]
+            dw.Submit(projected_samples)
+            
+            sample_mat_joint.free_device_memory()
+            sample_mat_image.free_device_memory()
+            sample_mat_text.free_device_memory()
+  
+        
+           
+      
+      
+      
+      
+      
+      
+        
+      
+            
+      
+

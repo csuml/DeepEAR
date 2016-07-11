@@ -234,6 +234,11 @@ message Operation {
     LBFGS = 3;
     CD = 4;
     PCD = 5;
+    VI = 6; // Variation of Information, this is from Michigan's paper 
+    MPT = 7; // Multi-Prediction Training
+    UPDOWN = 8; // UpDown Fine tuning 
+    TP = 9; //target propagation
+    VI_ACCUM = 10; // Modified VI proposed by Ning Zhang
   }
   required Optimizer optimizer = 1;
   message StopCondition {

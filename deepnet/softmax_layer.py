@@ -71,7 +71,6 @@ class SoftmaxLayer(Layer):
       # Compute derivative.
       if get_deriv:
         state.apply_softmax_grad(data, target=self.deriv)
-
     elif self.loss_function == deepnet_pb2.Layer.SQUARED_LOSS:
       state.apply_softmax_grad(data, target=self.deriv)
       error = self.deriv.euclid_norm()**2
@@ -87,4 +86,5 @@ class SoftmaxLayer(Layer):
 
   def GetSparsityDivisor(self):
     raise Exception('Sparsity not implemented for softmax units.')
+
 

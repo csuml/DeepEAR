@@ -1,0 +1,14 @@
+optimizer: CD
+stopcondition {
+  all_processed: false
+  steps: 30000
+}
+train: true 
+batchsize: 128
+data_proto: "PLP_rbm2_LAST/data.pbtxt"
+eval_after: 5000
+checkpoint_after: 10000
+checkpoint_directory: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_2_Multimodal_ITF/models/withoutMS"
+data_proto_prefix: "/data1/ningzhang/audio_eating_2/npFeatures/All/LOPO_2_Multimodal_ITF/reps/withoutMS"
+verbose: false
+randomize: true

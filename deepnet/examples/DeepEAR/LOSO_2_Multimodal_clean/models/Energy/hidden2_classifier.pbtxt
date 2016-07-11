@@ -1,0 +1,62 @@
+name: "Energy_hidden2_classifier"
+model_type: FEED_FORWARD_NET
+hyperparams {
+  base_epsilon: 0.01
+  initial_momentum : 0.5
+  final_momentum : 0.9
+  momentum_change_steps : 50000
+  apply_l2_decay: true
+  l2_decay: 0.001
+  select_model_using_acc: true
+}
+
+layer {
+  name: "input layer"
+  dimensions: 512
+  is_input: true
+  param {
+    name: "bias"
+    initialization: CONSTANT
+  }
+  data_field {
+    train: "Energy_hidden2_train"
+    validation: "Energy_hidden2_validation"
+    test: "Energy_hidden2_test"
+  }
+}
+
+layer {
+  name: "output layer"
+  dimensions: 1
+  param {
+    name: "bias"
+    initialization: CONSTANT
+  }
+  hyperparams{
+    activation: LOGISTIC
+    apply_l2_decay: false
+  }
+  is_output: true
+  loss_function: CROSS_ENTROPY
+  #loss_function: SQUARED_LOSS
+  data_field {
+    train: "label_train"
+    validation: "label_validation"
+    test: "label_test"
+  }
+  performance_stats {
+    compute_cross_entropy: true
+	compute_correct_preds: true
+  }
+}
+
+edge {
+  node1: "input layer"
+  node2: "output layer"
+  param {
+    name: "weight"
+    initialization: DENSE_GAUSSIAN_SQRT_FAN_IN
+    sigma: 1
+  }
+}
+

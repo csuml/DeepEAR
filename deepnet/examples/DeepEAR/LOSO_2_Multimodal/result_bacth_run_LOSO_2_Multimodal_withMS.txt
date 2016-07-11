@@ -1,0 +1,5 @@
+Energy_dnn_BEST train: 0.60182 valid: 0.82427 test: 0.66322 
+Energy_hidden1_classifier_BEST train: 0.46276 valid: 0.81586 test: 0.63667 
+Energy_hidden2_classifier_BEST train: 0.50260 valid: 0.82020 test: 0.64947 
+Energy_hidden3_classifier_BEST train: 0.49844 valid: 0.81819 test: 0.64590 
+Energy_input_classifier_BEST train: 0.42318 valid: 0.72245 test: 0.63611 

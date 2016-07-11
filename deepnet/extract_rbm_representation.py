@@ -24,7 +24,8 @@ def ExtractRepresentations(model_file, train_op_file, layernames,
   net = CreateDeepnet(model, op, op)
   net.LoadModelOnGPU()
   net.SetUpData()
-
+  #force mf_steps = 1
+  #net.net.hyperparams.mf_steps = 1 
   data_pb = deepnet_pb2.Dataset()
   data_pb.name = model.name
   data_pb.gpu_memory = gpu_mem

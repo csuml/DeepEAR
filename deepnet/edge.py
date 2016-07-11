@@ -8,11 +8,14 @@ class Edge(Parameter):
     self.node2 = node2
     self.tied_to = tied_to
     if proto.tied:
+      #cracking 
+      self.up_factor = proto.up_factor
       tied_to.num_shares += 1
       self.transpose = proto.tied_transpose
       proto.CopyFrom(tied_to.proto)
       proto.node1 = node1.name
       proto.node2 = node2.name
+      proto.up_factor = self.up_factor
       if self.transpose:
         for param in proto.param:
           if param.dimensions:
@@ -88,7 +91,8 @@ class Edge(Parameter):
       self.gradient_history = cm.CUDAMatrix(np.zeros(edge_shape))
       t_op = self.t_op
       if t_op and (t_op.optimizer == deepnet_pb2.Operation.PCD or \
-        t_op.optimizer == deepnet_pb2.Operation.CD):
+        t_op.optimizer == deepnet_pb2.Operation.CD or t_op.optimizer == deepnet_pb2.Operation.UPDOWN) \
+        or t_op.optimizer == deepnet_pb2.Operation.TP :
         self.suff_stats = cm.CUDAMatrix(np.zeros(edge_shape))
 
   def AllocateMemoryForConvolutions(self, param, node1, node2):
@@ -244,4 +248,5 @@ class Edge(Parameter):
       self.node1.state.mult_by_row(self.node1.NN)
     if self.node2.activation == deepnet_pb2.Hyperparams.REPLICATED_SOFTMAX:
       self.node2.state.mult_by_row(self.node2.NN)
+
 

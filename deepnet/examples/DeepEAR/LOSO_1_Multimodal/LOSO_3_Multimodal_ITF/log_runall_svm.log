@@ -1,0 +1,41 @@
+prepare MFCC libsvm file
+prepare Energy libsvm file
+prepare MFCC_Energy libsvm file
+Training input MFCC svm.
+elements: 5187
+.................................
+WARNING: using -h 0 may be faster
+*
+optimization finished, #iter = 33772
+nu = 0.734986
+obj = -209354.420510, rho = 6.912616
+nSV = 54132, nBSV = 54080
+Total nSV = 54132
+free model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x
+Training input Energy svm.
+elements: 802
+.....................................................................................*........................*
+optimization finished, #iter = 109652
+nu = 0.324764
+obj = -70695.217446, rho = 0.422026
+nSV = 51762, nBSV = 14568
+Total nSV = 51762
+free model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x
+Training input MFCC_Energy combined svm.
+elements: 5989
+.....................................................................*.....................*.*
+optimization finished, #iter = 91190
+nu = 0.469085
+obj = -111329.609438, rho = 1.187616
+nSV = 43826, nBSV = 29353
+Total nSV = 43826
+free model_ptr_ptr
+free svm_problem
+Free prob.y
+Free prob.x

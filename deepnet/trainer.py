@@ -46,8 +46,12 @@ def CreateDeepnet(model, train_op, eval_op):
     raise Exception('Model not implemented.')
 
 def main():
+  #import pdb
+  #pdb.set_trace()
   if use_gpu == 'yes':
     board = LockGPU()
+    #cm.cuda_set_device(0)
+    #cm.cublas_init()
   model, train_op, eval_op = LoadExperiment(sys.argv[1], sys.argv[2],
                                             sys.argv[3])
   model = CreateDeepnet(model, train_op, eval_op)
