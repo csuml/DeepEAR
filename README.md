@@ -2,6 +2,13 @@ deepnet
 =======
 
 ## Implementation of some deep learning algorithms. ##
+DeepEAR: DeepLearning-based Eating ActionRecognition Using Commodity BluetoothHeadsets
+All code about DeepEAR is included in deepnet/examples/DeepEAR
+
+To run the experiment follow the instruction in that folder
+
+This code is bulit on DeepNet which is orginally released by Nitish Srivastava:
+https://github.com/nitishsrivastava/deepnet
 
 GPU-based python implementation of
 
